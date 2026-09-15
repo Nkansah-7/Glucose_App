@@ -4,8 +4,8 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../models/glucose_reading.dart';
 
-/// Colored segment strip showing class-over-time — a CustomPainter port of
-/// the mockup's `timeline()` flex-div strip.
+/// Colored segment strip showing class-over-time with distinct gray gap blocks
+/// for reading breaks / disconnect intervals.
 class TimelineStrip extends StatelessWidget {
   const TimelineStrip({
     super.key,
@@ -69,21 +69,51 @@ class _TimelinePainter extends CustomPainter {
   final DateTime start;
   final Duration span;
 
+  static const int _gapThresholdMinutes = 7;
+
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFEEF1F6));
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFF1F5F9));
     final spanMs = span.inMilliseconds.toDouble();
+
     for (var i = 0; i < readings.length; i++) {
-      final x0 = ((readings[i].timestamp.difference(start).inMilliseconds) / spanMs).clamp(0.0, 1.0);
-      final x1 = i < readings.length - 1
-          ? ((readings[i + 1].timestamp.difference(start).inMilliseconds) / spanMs).clamp(0.0, 1.0)
-          : 1.0;
+      final current = readings[i];
+      final x0 = ((current.timestamp.difference(start).inMilliseconds) / spanMs).clamp(0.0, 1.0);
       final left = x0 * size.width;
-      final right = (x1 * size.width).clamp(left + 0.5, size.width);
-      canvas.drawRect(
-        Rect.fromLTRB(left, 0, right, size.height),
-        Paint()..color = AppColors.forClass(readings[i].glucoseClass),
-      );
+
+      if (i < readings.length - 1) {
+        final next = readings[i + 1];
+        final gapMinutes = next.timestamp.difference(current.timestamp).inMinutes;
+        final x1 = ((next.timestamp.difference(start).inMilliseconds) / spanMs).clamp(0.0, 1.0);
+        final right = x1 * size.width;
+
+        if (gapMinutes > _gapThresholdMinutes) {
+          // Draw normal reading block duration (~ 5 mins worth)
+          final xNormal = ((current.timestamp.add(const Duration(minutes: 5)).difference(start).inMilliseconds) / spanMs).clamp(0.0, 1.0);
+          final rightNormal = (xNormal * size.width).clamp(left + 1.0, right);
+
+          canvas.drawRect(
+            Rect.fromLTRB(left, 0, rightNormal, size.height),
+            Paint()..color = AppColors.forClass(current.glucoseClass),
+          );
+
+          // Draw Disconnected / No Signal gray block for the remaining gap
+          canvas.drawRect(
+            Rect.fromLTRB(rightNormal, 0, right, size.height),
+            Paint()..color = const Color(0xFFCBD5E1),
+          );
+        } else {
+          canvas.drawRect(
+            Rect.fromLTRB(left, 0, right.clamp(left + 0.5, size.width), size.height),
+            Paint()..color = AppColors.forClass(current.glucoseClass),
+          );
+        }
+      } else {
+        canvas.drawRect(
+          Rect.fromLTRB(left, 0, size.width, size.height),
+          Paint()..color = AppColors.forClass(current.glucoseClass),
+        );
+      }
     }
   }
 
